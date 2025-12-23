@@ -1,5 +1,6 @@
 const express = require("express");
 const authRoutes = require("./routes/auth.routes");
+const ApiResponse = require("./utils/apiResponse");
 
 const app = express();
 app.use(express.json());
@@ -9,16 +10,11 @@ app.get("/", (req, res) => {
 });
 app.use("/auth", authRoutes);
 
-
 //* Global error handler
 app.use((err, req, res, next) => {
   console.error(err);
 
-  return res.status(500).json({
-    status: 0,
-    message: "Internal server error",
-    data: {},
-  });
+  return ApiResponse.error(res, "Internal server error", {}, 500);
 });
 
 module.exports = app;

@@ -13,6 +13,7 @@ const userSchema = new mongoose.Schema(
     username: {
       type: String,
       required: true,
+      unique: true,
       trim: true,
     },
 
@@ -43,7 +44,9 @@ const userSchema = new mongoose.Schema(
 // Exclude soft-deleted users automatically
 userSchema.pre(/^find/, function (next) {
   this.where({ deletedAt: null });
-  next();
 });
+
+// Adding the indexes
+userSchema.index({ username: 1, email: 1 });
 
 module.exports = mongoose.model("User", userSchema);

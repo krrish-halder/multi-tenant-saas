@@ -4,6 +4,7 @@ const { generateJWT, generateRandomToken } = require("../utils/token");
 const { sendMail } = require("../services/mail.service");
 const { registerSchema, loginSchema } = require("../validators/auth.validator");
 const ApiResponse = require("../utils/apiResponse");
+const emailQueue = require("../queues/email.queue");
 
 exports.register = async (req, res, next) => {
   try {
@@ -14,9 +15,14 @@ exports.register = async (req, res, next) => {
 
     const { email, username, password } = req.body;
 
-    const exists = await User.findOne({ email });
+    const exists = await User.findOne({
+      $or: [{ email }, { username }],
+    });
     if (exists) {
-      return ApiResponse.error(res, "Email already exixts", {}, 409);
+      if (exists.email === email) {
+        return ApiResponse.error(res, "Email already exists", {}, 409);
+      }
+      return ApiResponse.error(res, "Username already exists", {}, 409);
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -29,17 +35,26 @@ exports.register = async (req, res, next) => {
       emailVerificationToken: verificationToken,
     });
 
-    const verifyUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+    const verifyUrl = `${process.env.FRONTEND_URL}/auth/verify-email?token=${verificationToken}`;
 
-    await sendMail({
+    await emailQueue.add("send-verification-email", {
       to: email,
       subject: "Verify your email",
       html: `
-        <h2>Email Verification</h2>
-        <p>Click the link below to verify your email:</p>
-        <a href="${verifyUrl}">${verifyUrl}</a>
-      `,
+    <h2>Email Verification</h2>
+    <p>Click the link below to verify your email:</p>
+    <a href="${verifyUrl}">${verifyUrl}</a>
+  `,
     });
+  // await sendMail({
+  //   to: email,
+  //   subject: "Verify your email",
+  //   html: `
+  //       <h2>Email Verification</h2>
+  //       <p>Click the link below to verify your email:</p>
+  //       <a href="${verifyUrl}">${verifyUrl}</a>
+  //     `,
+  // });
 
     return ApiResponse.success(
       res,
@@ -104,7 +119,7 @@ exports.login = async (req, res, next) => {
       userId: user._id,
     });
 
-    return ApiResponse.success(res, "Login successful", {
+    return ApiResponse.success(res, "Login successfully", {
       token,
       user: {
         id: user._id,
