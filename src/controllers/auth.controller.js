@@ -5,6 +5,8 @@ const { sendMail } = require("../services/mail.service");
 const { registerSchema, loginSchema } = require("../validators/auth.validator");
 const ApiResponse = require("../utils/apiResponse");
 const emailQueue = require("../queues/email.queue");
+const { createTenantWithOwner } = require("../services/tenant.service");
+const TenantMember = require("../models/TenantMember");
 
 exports.register = async (req, res, next) => {
   try {
@@ -37,6 +39,9 @@ exports.register = async (req, res, next) => {
 
     const verifyUrl = `${process.env.FRONTEND_URL}/auth/verify-email?token=${verificationToken}`;
 
+    // Create tenant + owner role
+    const { tenant, role } = await createTenantWithOwner(user);
+
     await emailQueue.add("send-verification-email", {
       to: email,
       subject: "Verify your email",
@@ -46,15 +51,6 @@ exports.register = async (req, res, next) => {
     <a href="${verifyUrl}">${verifyUrl}</a>
   `,
     });
-  // await sendMail({
-  //   to: email,
-  //   subject: "Verify your email",
-  //   html: `
-  //       <h2>Email Verification</h2>
-  //       <p>Click the link below to verify your email:</p>
-  //       <a href="${verifyUrl}">${verifyUrl}</a>
-  //     `,
-  // });
 
     return ApiResponse.success(
       res,
@@ -115,8 +111,19 @@ exports.login = async (req, res, next) => {
       return ApiResponse.error(res, "Invalid credentials", {}, 401);
     }
 
+    // Pick the first tenant membership
+    const membership = await TenantMember.findOne({
+      userId: user._id,
+    }).populate("roleId");
+
+    if (!membership) {
+      return ApiResponse.error(res, "No tenant access found", {}, 403);
+    }
+
     const token = generateJWT({
       userId: user._id,
+      tenantId: membership.tenantId,
+      roleId: membership.roleId._id,
     });
 
     return ApiResponse.success(res, "Login successfully", {
@@ -130,4 +137,28 @@ exports.login = async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+};
+
+exports.switchTenant = async (req, res) => {
+  const { tenantId } = req.body;
+  const userId = req.auth.userId;
+
+  const membership = await TenantMember.findOne({
+    userId,
+    tenantId,
+  });
+
+  if (!membership) {
+    return ApiResponse.error(res, "Access denied to tenant", {}, 403);
+  }
+
+  const token = generateJWT({
+    userId,
+    tenantId,
+    roleId: membership.roleId,
+  });
+
+  return ApiResponse.success(res, "Tenant switched successfully", {
+    token,
+  });
 };
