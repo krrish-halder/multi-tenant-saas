@@ -1,11 +1,15 @@
 require("dotenv").config();
 const app = require("./app");
 const connectDB = require("./config/db");
-
-connectDB();
+const { loadPermissions } = require("./utils/permissionMap");
 
 const PORT = process.env.APP_PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+(async () => {
+  await connectDB();
+  await loadPermissions();
+
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+})();
